@@ -1,0 +1,16 @@
+# Bump Sensor information message from DrRobot Robot.
+
+Header header    	# timestamp in the header is the time
+float32 system_vol	# system voltage, normally is battery vol, in charge staiton, it is DC power voltage
+uint8 chargestation_flag	#1-in hcarge station, 0-not
+uint8 charge_flag	# 1- charging, 0- not
+float32 motionboard_vol	# 5V
+float32 robot_x		# robot position X
+float32 robot_y		# robot position Y
+float32 robot_heading	# robot heading unit:radian
+float32 head_tiltangle	# head tile angle, unit: radian
+float32 head_panangle	# head pan angle, unit: radian
+float32 laser_tiltangle	# laser tilting angle, unit:radian
+uint8 bumpsensor	# bump sensor, bit0~bit3
+uint8 faceimage_num		# face image number
+uint8 power_source	# power source, 0- battery, 1 - dc power

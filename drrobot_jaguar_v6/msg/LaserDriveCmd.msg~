@@ -1,0 +1,4 @@
+# laser motor command message from DrRobot Robot.
+float32 tilt_pos		# laser tilt angle(-20~20)
+int32 auto_scan_flag	# 1- auto scan, 0 -stop ,-1, just position contorl
+

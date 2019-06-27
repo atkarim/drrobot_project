@@ -1,0 +1,182 @@
+#ifndef DRROBOTSENSORDATA_H
+#define DRROBOTSENSORDATA_H
+#define WHEEL_R 0.085
+#define WHEEL_CIRCLE_CNT    380
+#define WHEEL_DISTANCE  0.39
+#define HEAD_PAN_CIRCLE_CNT 378
+#define ENCODERHALFRANGE    16384
+#define ENCODERFULLRANGE    32767
+#define HEAD_PAN_LM_TH     90       // +/- 90 degree
+#define HEAD_TILT_CIRCLE_CNT 8056
+#define HEAD_TILT_LM_TH    70       // +/- 70 degree
+
+#define MAX_SPEED   300     //for wheel max encoder speed comamnd value
+#define MAX_LINE 200
+
+#define IR_NUM  16      // 16 IR range sensor
+#define US_NUM  6       // 6 US sensor
+#define MOTOR_NUM   4    // 0- left wheel, 1- right wheel, 2 head tilt, 3 head pan
+
+#define MOTION_TIMEOUT  100
+#define CHARGE_TIMEOUT 100
+#define LASERDRIVE_TIMEOUT  100
+#define INDOORGPS_TIMEOUT 100
+
+#define SENSOR_R    0.25
+#define SENSOR_ANGLE_STEP 22.5      // 16 sensor one circle(360)
+
+#define INIPWM 16384
+#define NOCONTROL -32768
+
+#define LASER_SCAN_STEP 5 // 5 degree
+#define LASER_SCAN_UP_TH 20
+#define LASER_SCAN_DOWN_TH -20
+#define LASER_SCAN_RESOLUTION   9.2// 20 degree, 184 count,
+#define LASER_LM_TH     20      // +/- 20 degree
+#define LASER_SCAN_UP_LM 184
+#define LASER_SCAN_DOWN_LM -184
+
+#define GPS_OFFSETX 0
+#define GPS_OFFSETY -0.205
+
+#define MAX_BUFFER_SIZE 2048
+#define CHARGE_DATA_PACK_LEN 149   // charge Ram0 package
+#define RXCRC16 4742
+#include "string.h"
+struct IRRangeData
+{
+    double angle;
+    double offsetX;     // point to front, distance to robot center(btween 2 wheels)
+    double offsetY;     //point to left, distance to robot center
+    double offsetZ;
+    int disTag;         // enable('1') the sensor or not '0'
+    double weight;      //now all set to '1', maybe used in future algorithm
+    double rawDis;      // distance read from sensor
+    double detectDis;   // transform to distance to robot center(based on angle, offsetX, offsetY),
+    double detectX;                 //In ROS, the distance is base-link
+    double detectY;
+    double detectZ;
+};
+
+struct USRangeData
+{
+    double angle;
+    double offsetX;     // point to front, distance to robot center(btween 2 wheels)
+    double offsetY;     //point to left, distance to robot center
+    double offsetZ;
+    int disTag;         // enable('1') the sensor or not '0'
+    double weight;      //now all set to '1', maybe used in future algorithm
+    double rawDis;      // distance read from sensor
+    double detectDis;   // transform to distance to robot center(based on angle, offsetX, offsetY),
+    double detectX;     //In ROS, the distance is base-link
+    double detectY;
+    double detectZ;
+};
+
+struct MotorData
+{
+    int motDir;
+    int encoderPos;
+    int encoderVel;
+    int encoderDir;
+    int pwmValue;
+    double temperature; // not used now
+    double current;    // now only avaiable from laser drive motor
+    double anglePos;    // for head tilt, pan, and laser drive
+};
+
+struct RobotPositionData
+{
+    double robotX;          //output robotX,
+    double robotY;
+    double robotHeading;
+    double robotX_En;       // dead reckoning, estimate the positon from encoder
+    double robotY_En;
+    double robotHeading_En;
+
+
+};
+
+struct Laser_Data       // this data will be used to publish a tf to tanslate the scan sensor data
+{
+    double offsetX;
+    double offestY;
+    double offsetZ;
+    double tilt_Angle;  //from the laser motor angle position
+    int stopFlag;   // tilt motor stop or not
+    int driveState; //drive board state
+};
+
+struct IndoorGPSData
+{
+    double gpsOffsetX;
+    double gpsOffsetY;
+    double robotX_GPS;      // read from the indoor gps
+    double robotY_GPS;
+    double robotHeading_GPS;
+    double markHeight;
+    int markID  ;// landmark ID
+    int validFlag;  // 1- valid, 0-invalid, timeout, no new data update
+    QString indoorGPSMsg;
+};
+
+
+struct ChargerData
+{
+    double batteryVol;
+    double batteryFuel;
+    double dcPowerVol;
+    double dcPowerCurrent;
+    double chargeCurrent;
+    long chargeTimeMin;
+    long chargeTimeSec;
+    int chargeErrorCode;
+    int chargeMode;
+    int chargeStatus;
+    int chargeRxStatus;
+    double chargerCPUTemperature;
+    double cellVol[6];
+    double cellRes[6];
+    double setCurrent;
+    int chargeFlag;
+    int inChargeStation;
+    int powerReduceReason;
+};
+
+struct BumpData
+{
+    int bumpSW1;
+    int bumpSW2;
+    int bumpSW3;
+    int bumpSW4;
+};
+
+struct SystemData
+{
+    double systemVol;   // normally is battery voltage, except in charge station
+    double batteryVol;
+    int chargeStationFlag;
+    int chargeFlag;
+    int indoorGPSFlag;          // indicate the indoor gps communication state
+    int laserDriveFlag;         // indicate the laser drive motor communication state
+    int chargeControllerFlag;   // indicate the charge controller communication state
+    int motionControlFlag;      // motion controller communication state
+    int indoorGPSTimeOutCnt;
+    int laserDriveTimeOutCnt;
+    int motionControlTimeOutCnt;
+    int chargeControlTimeoutCnt;
+    double motionBoardVol;
+    double robotX;
+    double robotY;
+    double robotHeading;
+    double headTiltAngle;
+    double headPanAngle;
+    double laserTiltAngle;
+    int bumpSensor;         //bit 0,1,2,3
+    int faceImage;          // for picture number on the face(tablet)
+
+};
+
+#define FACE_SERVER_PORT   10005
+
+#endif // DRROBOTSENSORDATA_H

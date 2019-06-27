@@ -1,0 +1,156 @@
+#ifndef DRROBOTP2PDRIVE_H
+#define DRROBOTP2PDRIVE_H
+
+#include "../include/drrobot_clinicrobot/drrobotconst.hpp"
+
+
+class SetTargetPointRequest
+{
+    public:
+            double TargetX;
+            double TargetY;
+            double TargetDir;
+            int StopTime;
+            double ForwardSpeed;
+            bool Forgetable;
+            bool NonStop;
+            bool FinalPosture;
+            int TargetTime;
+            double TargetTolerance;
+            double MaxTurnSpeed;
+            bool CAEnable;
+            bool ReverseDrive;
+            double TargetDirTolerance;
+
+            void setTargetPointRequest()
+            {
+                TargetX = 0;
+                TargetY = 0;
+                TargetDir = 0;
+                StopTime = 0;
+                ForwardSpeed = 0;
+                Forgetable = false ;
+                NonStop = false;
+                FinalPosture = false;
+                TargetTime = 0;
+                TargetTolerance = 0;
+                MaxTurnSpeed = 0;
+                CAEnable = false;
+                ReverseDrive = false;
+                TargetDirTolerance = 0;
+            }
+        };
+
+class RobotPosition
+{
+    public :
+        double robotX;
+        double robotY;
+        double robotDir;
+        int LeftWheelEncoderCnt;
+        int RightWheelEncoderCnt;
+        void setRobotPosition()
+        {
+            robotX = 0;
+            robotY = 0;
+            robotDir = 0;
+            LeftWheelEncoderCnt = 0;
+            RightWheelEncoderCnt = 0;
+        }
+};
+
+class SensorMapData
+{
+    public:
+        int Polar_Value_Map[MAPSECTIONNUM];
+        int Polar_Bin_Map[MAPSECTIONNUM];
+
+    void setSensorMapData()
+    {
+
+        for (int i = 0; i < MAPSECTIONNUM; i++)
+        {
+            Polar_Bin_Map[i] = 0;
+            Polar_Value_Map[i] = 0;
+        }
+    }
+};
+
+class RobotInfo
+{
+    public:
+        double WheelRadius;      //unit:m
+        double WheelDis;          //unit:m
+        int OneCircleCount;        //encoder count
+        int MotorDir;
+        void setRobotInfo()
+        {
+            WheelDis = 0.39;
+            WheelRadius = 0.0825;
+            OneCircleCount = 380;
+            MotorDir = -1;
+        }
+};
+
+class P2PDriveParameter
+{
+    public:
+            double ToleranceStep;
+            double SlowGainTurnRatio;
+            double SlowGain;
+            double MinTurnSpeed;
+            double MinForwardSpeed;
+            double MoveMoment;
+    //here is the default value
+    void setP2PDriveParameter()
+    {
+        ToleranceStep = 0.01;       //1 cm
+        SlowGainTurnRatio = 0.1;
+        SlowGain = 0.05;
+        MinTurnSpeed = 0.3;         //around 17 degree
+        MinForwardSpeed = 0.05;
+        MoveMoment = 0;
+    }
+
+};
+class P2PCAParameter
+{
+    public:
+            int Distance2ObjectTH;
+            int MinOpenTH;
+            int CATH;
+    //here is the default value
+    void setP2PCAParameter()
+    {
+        Distance2ObjectTH = 6;       //6 section
+        MinOpenTH = 4;              //minimum open 4 section
+        CATH = 100;
+    }
+
+};
+
+
+class MotorControlCmd
+{
+    public:
+        P2PServiceStatus p2pDriveStatus;
+        P2PDriveMethod p2pDriveMethod;
+        int LeftWheelCmd;
+        int RightWheelCmd;
+        int RunTime;
+
+        void setMotorControlCmd()
+        {
+            p2pDriveStatus = P2POver;
+            p2pDriveMethod = SpeedControl;
+            LeftWheelCmd = 0;
+            RightWheelCmd = 0;
+            RunTime = 0;
+
+        }
+
+};
+
+
+
+#endif // DRROBOTP2PDRIVE_H

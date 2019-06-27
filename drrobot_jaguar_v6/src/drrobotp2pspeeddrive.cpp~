@@ -1,0 +1,644 @@
+#include "../include/drrobot_clinicrobot/drrobotp2pspeeddrive.h"
+
+double DrRobotP2PSpeedDrive::calP2PAngle(double X1, double Y1, double  X2,double Y2)
+{
+    double result = 0;
+    if ((X2 - X1) != 0)
+    {
+        if ( (X2 - X1) > 0 )  //atn function only return -PI/2 to P/2 range
+        {
+            result = qAtan((Y2 - Y1) / (X2 - X1));
+        }
+        else
+        {
+            if ( (Y2 - Y1) > 0 )
+                result = M_PI + qAtan((Y2 - Y1) / (X2 - X1));
+            else
+                result = qAtan((Y2 - Y1) / (X2 - X1)) - M_PI;
+        }
+    }
+    else
+    {
+        if ( (Y2 - Y1) > 0 )
+            result = M_PI/2;
+        else
+            result = -M_PI/2;
+    }
+    return result;
+}
+
+int DrRobotP2PSpeedDrive::cycleindex(int Index)
+{
+    int cycleindex = 0;
+    if (Index >= 0)
+        cycleindex = ((Index)% cSectionRange) ;
+    else
+        cycleindex = ((Index + cSectionRange) % cSectionRange);
+
+    return cycleindex;
+}
+
+double DrRobotP2PSpeedDrive::AnglePI(double  adeltaAngle)
+{
+    if (adeltaAngle > M_PI)
+        adeltaAngle = adeltaAngle - M_PI*2;
+    else if (adeltaAngle < -M_PI)
+        adeltaAngle = adeltaAngle + M_PI * 2;
+
+    return adeltaAngle;
+}
+
+
+void DrRobotP2PSpeedDrive::setDrRobotP2PSpeedDrive()
+{
+    _p2pWaitCnt = 0;
+    waitTurnCnt = 0;
+    setTurnTime = 10;
+    blnTurnFinish = true;
+    p2pServiceStatus = P2POver;
+    robotPosition.setRobotPosition();      //initialize
+    sensorMapData.setSensorMapData();
+    p2pCAParameter.setP2PCAParameter();
+    p2pDriveParameter.setP2PDriveParameter();
+    robotInfo.setRobotInfo();
+    motorCmd.setMotorControlCmd();
+    _pointSet.setTargetPointRequest();
+    taskOver = false;
+    mainTimer.setInterval(100);
+
+    QObject::connect (&mainTimer,SIGNAL(timeout()),this,SLOT(ctrlTimeEvent()));
+    mainTimer.start();
+
+}
+
+//region get robot information function
+bool DrRobotP2PSpeedDrive::SetRobotInfo(RobotInfo data)
+{
+    robotInfo = data;
+    return true;
+}
+
+bool DrRobotP2PSpeedDrive::UpdateSensorMap_Position(RobotPosition posData, SensorMapData sensorMap)
+{
+    sensorMapData = sensorMap;
+    robotPosition = posData;
+    return true;
+}
+
+bool DrRobotP2PSpeedDrive::SetTargetPosition(SetTargetPointRequest request)
+{
+
+    _pointSet = request;
+    return true;
+}
+bool DrRobotP2PSpeedDrive::SetP2PDriveParameter(P2PDriveParameter request)
+{
+    p2pDriveParameter = request;
+    return true;
+}
+
+bool DrRobotP2PSpeedDrive::SetP2PCAParameter(P2PCAParameter request)
+{
+    p2pCAParameter = request;
+    return true;
+}
+
+bool DrRobotP2PSpeedDrive::SendP2PCmd(P2PCtrlCmd cmd)
+{
+    if (cmd == P2PCtrlCmdP2PGo)
+    {
+        //start go
+        p2pServiceStatus = P2PGo;
+        blnTurnFinish = true;
+        p2pTimeCnt = 0;
+        _p2pWaitCnt = 0;
+    }
+    else if (cmd == P2PCtrlCmdStopP2P)
+    {
+        p2pServiceStatus = P2POver;
+        motorCmd.LeftWheelCmd = 0; ;
+        motorCmd.RightWheelCmd = 0;
+        motorCmd.p2pDriveMethod = SpeedControl;
+        motorCmd.p2pDriveStatus = P2POver;
+        p2pServiceStatus = P2POver;
+        emit p2pDriveCmdCallback(motorCmd);
+    }
+    else if (cmd == P2PCtrlCmdP2PSkip)
+    {
+
+        _pointSet.StopTime = 0;
+        _p2pWaitCnt = 0;
+
+
+    }
+    else if (cmd == P2PCtrlCmdResumeP2P)
+    {
+        p2pServiceStatus = P2PGo;
+    }
+    else if (cmd == P2PCtrlCmdSuspendP2P)
+    {
+        p2pServiceStatus = P2PSuspend;
+    }
+    return true;
+}
+
+void DrRobotP2PSpeedDrive::ctrlTimeEvent()
+        {
+
+            P2PServiceStatus tempP2PStatus = P2POver;
+            int sectionNum = 0;
+            double correcteddirection = 0;
+            double P2PAngle = 0;
+            double mEangle = 0;
+            double AngleError = 0;
+            int i = 0;
+            double KV_w = 0;
+            double KP_w = 4;                //KP_w * angleError <1, angleError = 0.25 about  15 degree
+            double kp_slow_gain = 0;
+            double carW = 0;
+            double carV = 0;
+
+            int motorSpeedCmd1 = 0;
+            int motorSpeedCmd2 = 0;
+            double distanceError = 0;
+            //here is main loop
+            if (!taskOver)
+            {
+                //subscribe service is ok , P2P start
+                if ((p2pServiceStatus == P2POver) || (p2pServiceStatus == P2PSuspend))
+                {
+                    //do nothing here
+                }
+                else
+                {
+
+                        distanceError = qSqrt((_pointSet.TargetX - robotPosition.robotX) * (_pointSet.TargetX - robotPosition.robotX)
+                                + (_pointSet.TargetY - robotPosition.robotY) * (_pointSet.TargetY - robotPosition.robotY));
+                        if ((distanceError > (_pointSet.TargetTolerance + p2pDriveParameter.MoveMoment))
+                                && (p2pServiceStatus != P2PTurn) && (p2pServiceStatus != P2PWait))
+                        {
+                            //not close to the target within the tolerance zone + momentum distance
+                            tempP2PStatus = P2PGo;
+                            if (_pointSet.Forgetable)
+                            {
+                                p2pTimeCnt = p2pTimeCnt + 1;
+
+                                if (p2pTimeCnt > _pointSet.TargetTime)
+                                {
+                                    _pointSet.TargetTolerance = _pointSet.TargetTolerance + p2pDriveParameter.ToleranceStep;
+                                }
+
+                            }
+
+                            P2PAngle = calP2PAngle(robotPosition.robotX, robotPosition.robotY, _pointSet.TargetX, _pointSet.TargetY);
+                            //'******************************************************************************
+                            //here is collision avoidance
+                            if (_pointSet.CAEnable)
+                            {
+                                sectionNum = cycleindex((int)(cSectionRange * (P2PAngle + M_PI) / (M_PI * 2)));      //+0.501
+
+
+
+                                if (sensorMapData.Polar_Bin_Map[sectionNum] != 0)
+                                {
+                                    //find the closest open valley
+
+                                    int opensectiondistance = cSectionRange;
+
+                                    i = 0;       //seacrch front and back half cycle
+                                    do
+                                    {
+                                        i = i + 1;
+                                    } while (!(sensorMapData.Polar_Bin_Map[cycleindex(sectionNum + i)] == 0 || (i == (cSectionRange / 2 - 1))));
+
+
+
+                                    if (sensorMapData.Polar_Bin_Map[cycleindex(sectionNum + i)] == 0)
+                                        opensectiondistance = i; //found opening
+
+                                    i = 0;       //seacrch front and back half cycle
+                                    do
+                                    {
+                                        i = i + 1;
+                                    } while (!(sensorMapData.Polar_Bin_Map[cycleindex(sectionNum - i)] == 0 || i == (cSectionRange / 2 - 1)));
+
+
+                                    if (sensorMapData.Polar_Bin_Map[cycleindex(sectionNum - i)] == 0 && i < opensectiondistance)
+                                        opensectiondistance = -i;        //found opening
+
+
+                                    if (opensectiondistance == cSectionRange)
+                                    {
+                                        //can not find opening
+
+                                        motorCmd.LeftWheelCmd = 0;
+                                        motorCmd.RightWheelCmd = 0;
+                                        motorCmd.p2pDriveMethod = SpeedControl;
+                                        motorCmd.p2pDriveStatus = P2PCAStuck;
+                                        p2pServiceStatus = P2PCAStuck;
+                                        emit p2pDriveCmdCallback(motorCmd);
+
+                                    }
+                                    else
+                                    {
+                                        i = 0;
+                                        do
+                                        {
+                                            i = i + 1;
+                                        } while (!((sensorMapData.Polar_Bin_Map[cycleindex(sectionNum + opensectiondistance + sign(opensectiondistance) * i)] == 1) || (i >= cSectionRange)));
+
+
+                                        if (i > 11)
+                                            i = 6;
+                                        else
+                                            i = i / 2;
+
+
+                                        correcteddirection = (double)(cycleindex(sectionNum + opensectiondistance + sign(opensectiondistance) * i)) * 360 / (double)cSectionRange - 180;          // -0.5
+
+                                        P2PAngle = (correcteddirection) / 180.0 * M_PI;
+                                    }
+                                }
+                                else //lie on opening
+                                {
+
+                                    int fclosesectiondistance = cSectionRange;
+                                    int bclosesectiondistance = cSectionRange;
+
+                                    i = 0;   //seacrch front and back half cycle
+                                    do
+                                    {
+                                        i = i + 1;
+                                    } while (!(sensorMapData.Polar_Bin_Map[cycleindex(sectionNum + i)] == 1 || i == cSectionRange / 2));
+
+
+                                    if (sensorMapData.Polar_Bin_Map[cycleindex(sectionNum + i)] == 1)
+                                        fclosesectiondistance = i; //found closing
+
+
+                                    i = 0; //seacrch front and back half cycle
+                                    do
+                                    {
+                                        i = i + 1;
+                                    } while (!((sensorMapData.Polar_Bin_Map[cycleindex(sectionNum - i)] == 1) || (i == cSectionRange / 2)));
+
+
+                                    if (sensorMapData.Polar_Bin_Map[cycleindex(sectionNum - i)] == 1)
+                                        bclosesectiondistance = i; //found opening
+
+
+                                    if ((fclosesectiondistance == cSectionRange) && (bclosesectiondistance == cSectionRange))
+                                    {
+                                        //no closing
+                                    }
+                                    else
+                                    {
+
+                                        if ((fclosesectiondistance > p2pCAParameter.Distance2ObjectTH) && (bclosesectiondistance > p2pCAParameter.Distance2ObjectTH))
+                                        {
+                                            //OpenWithNoChange
+
+                                        }
+                                        else
+                                        {
+                                            if ((fclosesectiondistance + bclosesectiondistance) > p2pCAParameter.MinOpenTH)
+                                            {
+
+                                                if ((fclosesectiondistance + bclosesectiondistance) < (2 * p2pCAParameter.Distance2ObjectTH))
+                                                {
+                                                    correcteddirection = (double)(cycleindex(sectionNum + (fclosesectiondistance - bclosesectiondistance) / 2)) * 360 / (double)cSectionRange - 180;  //-0.5
+                                                    P2PAngle = correcteddirection / 180 * M_PI;
+                                                }
+                                                else
+                                                {
+                                                    if (fclosesectiondistance < bclosesectiondistance) //correct to backward
+                                                        correcteddirection = (double)(cycleindex(sectionNum + fclosesectiondistance - p2pCAParameter.Distance2ObjectTH)) * 360 / (double)cSectionRange - 180;  //-0.5
+                                                    else
+                                                        correcteddirection = (double)(cycleindex(sectionNum - bclosesectiondistance + p2pCAParameter.Distance2ObjectTH)) * 360 / (double)cSectionRange - 180;  //=0.5
+
+                                                    P2PAngle = (correcteddirection) / 180 * M_PI;
+                                                }
+                                            }
+                                            else
+                                            {
+
+                                                    motorCmd.LeftWheelCmd = 0;
+                                                    motorCmd.RightWheelCmd = 0;
+                                                    motorCmd.p2pDriveMethod = SpeedControl;
+                                                    motorCmd.p2pDriveStatus = P2PCAStuck;
+                                                    p2pServiceStatus = P2PCAStuck;
+                                                    emit p2pDriveCmdCallback(motorCmd);
+
+                                            }
+                                        }
+
+                                    }
+                                }
+                            }
+
+                            //*********************************************************************************************
+                            //*********************************************************************************************
+
+                            P2PAngle = AnglePI(P2PAngle);
+
+                            //to allow reverse drive
+                            if (_pointSet.ReverseDrive)
+                            {
+                                mEangle = robotPosition.robotDir - M_PI;
+                                mEangle = AnglePI(mEangle);
+                            }
+                            else
+                                mEangle = robotPosition.robotDir;
+
+
+                            AngleError = P2PAngle - mEangle;
+                            AngleError = AnglePI(AngleError);
+
+                            if (_pointSet.ReverseDrive == true)
+                                AngleError = -AngleError;
+
+
+                            if (fabs(AngleError) > _pointSet.TargetDirTolerance)
+                            {
+                                //no turning when angel error is less than 0.05*53 = 1.5 o
+                                KV_w = p2pDriveParameter.SlowGainTurnRatio / fabs(AngleError);  // when error less than 0.25*53 = 13 degree, full speed
+                                KV_w = (KV_w > 1 ? 1 : KV_w);
+                            }
+                            else
+                            {
+                                KP_w = 0;
+                                KV_w = 1;
+                            }
+
+                            kp_slow_gain = p2pDriveParameter.SlowGain * 100 * fabs(distanceError);  //   5  * distanceError) '(when within 450mm, start to reduce the turning and running effect)
+                            KP_w = (kp_slow_gain > 1 ? KP_w : KP_w * kp_slow_gain);
+                            KP_w = (KP_w < p2pDriveParameter.MinTurnSpeed ? p2pDriveParameter.MinTurnSpeed : KP_w);  //minimum turning gain, 1/0.5 = 2 sec to correct the error
+
+                            if (_pointSet.NonStop == false)
+                                KV_w = (kp_slow_gain > 1 ? KV_w : KV_w * kp_slow_gain);
+                            KV_w = (KV_w < p2pDriveParameter.MinForwardSpeed ? p2pDriveParameter.MinForwardSpeed : KV_w);     //minimum forward speed gain, 0.05 of the target forward speed.
+
+
+                            carW = KP_w * AngleError;
+                            carW = (fabs(carW) < _pointSet.MaxTurnSpeed ? carW : _pointSet.MaxTurnSpeed * sign(carW));
+
+                            carV = KV_w * _pointSet.ForwardSpeed;
+
+                            if (_pointSet.CAEnable)             // 1: CAEnable: speed control,
+                            {
+                                sectionNum = cycleindex((int)(cSectionRange * (P2PAngle + M_PI) / (M_PI * 2)));  // + 0.501
+
+                                int HC = (sensorMapData.Polar_Value_Map[sectionNum] < p2pCAParameter.CATH ? sensorMapData.Polar_Value_Map[sectionNum] : p2pCAParameter.CATH);
+
+                                double reducedtargetforwardspeed = _pointSet.ForwardSpeed * (1 - (double)HC / (double)p2pCAParameter.CATH);
+
+                                carV = KV_w * reducedtargetforwardspeed;
+
+                                if (tempP2PStatus != P2PCAStuck)
+                                {
+                                    carV = (fabs(carV) < p2pDriveParameter.MinForwardSpeed ? sign(carV) * p2pDriveParameter.MinForwardSpeed : carV);
+                                }
+                                else
+                                {
+                                    carV = 0;
+                                    carW = 0;
+                                }
+                            }
+                            //*************************************************************************************
+                            //*************************************************************************************
+
+                            double leftwheelw = (2 * carV - carW * robotInfo.WheelDis) / (2 * robotInfo.WheelRadius);
+                            double rightwheelw = (carW * robotInfo.WheelDis + 2 * carV) / (2 * robotInfo.WheelRadius);
+
+
+
+                            //here is the ouput motor speed command
+
+                            if (_pointSet.ReverseDrive == false)
+                            {
+                                motorSpeedCmd1 = -robotInfo.MotorDir * (int)(leftwheelw * robotInfo.OneCircleCount / (2 * M_PI));
+                                motorSpeedCmd2 = robotInfo.MotorDir * (int)(rightwheelw * robotInfo.OneCircleCount / (2 * M_PI));
+                            }
+                            else
+                            {
+                                motorSpeedCmd1 = robotInfo.MotorDir * (int)(leftwheelw * robotInfo.OneCircleCount / (2 * M_PI));
+                                motorSpeedCmd2 = -robotInfo.MotorDir * (int)(rightwheelw * robotInfo.OneCircleCount / (2 * M_PI));
+                            }
+
+
+                                motorCmd.LeftWheelCmd = motorSpeedCmd1;
+                                motorCmd.RightWheelCmd = motorSpeedCmd2;
+                                motorCmd.p2pDriveMethod = SpeedControl;
+                                motorCmd.p2pDriveStatus = P2PGo;
+                                p2pServiceStatus = P2PGo;
+                                emit p2pDriveCmdCallback(motorCmd);
+
+                        }
+
+                        else if (_pointSet.NonStop == false)
+                        {
+                            //here is the already at the point within tolerence
+                            //turn or not
+                            if (_pointSet.FinalPosture == false)
+                            {
+                                //here is the task finished output
+
+                                    motorCmd.LeftWheelCmd = 0;  //stop
+                                    motorCmd.RightWheelCmd = 0;
+                                    motorCmd.p2pDriveMethod = SpeedControl;
+                                    motorCmd.p2pDriveStatus = P2POver;
+                                    p2pServiceStatus = P2POver;
+                                    emit p2pDriveCmdCallback(motorCmd);
+
+                            }
+                            else
+                            {
+                                //Do turning
+                                if ((p2pServiceStatus != P2PTurn) && (blnTurnFinish))
+                                {
+                                    //stop first
+
+                                        motorCmd.LeftWheelCmd = 0;
+                                        motorCmd.RightWheelCmd = 0;
+                                        motorCmd.p2pDriveMethod = SpeedControl;
+                                        motorCmd.p2pDriveStatus = P2PGo;
+                                        p2pServiceStatus = P2PGo;
+                                        emit p2pDriveCmdCallback(motorCmd);
+
+                                    _pointSet.TargetDir = AnglePI(_pointSet.TargetDir);
+                                    AngleError = _pointSet.TargetDir - robotPosition.robotDir;
+                                    AngleError = AnglePI(AngleError);
+
+
+
+                                    int leftDelta = 0;
+
+                                    if (fabs(AngleError) > _pointSet.TargetDirTolerance)      //0.025
+                                    {
+
+                                        tempP2PStatus = P2PTurn;
+                                        waitTurnCnt = 0;
+                                        setTurnTime = 20;
+
+                                        int leftwheelposition = (int)(robotPosition.LeftWheelEncoderCnt +
+                                            robotInfo.MotorDir * robotInfo.OneCircleCount * AngleError * robotInfo.WheelDis / 2 / robotInfo.WheelRadius / (2 * M_PI)) % 32767;
+
+                                        int rightwheelposition = (int)(robotPosition.RightWheelEncoderCnt +
+                                            robotInfo.MotorDir * robotInfo.OneCircleCount * AngleError * robotInfo.WheelDis / 2 / robotInfo.WheelRadius / (2 * M_PI)) % 32767;
+
+
+
+                                        leftDelta = fabs(leftwheelposition - robotPosition.LeftWheelEncoderCnt);
+                                        if (leftDelta > 16384)
+                                        {
+                                            if (leftwheelposition < robotPosition.LeftWheelEncoderCnt)
+                                                leftDelta = leftwheelposition + 32767 - robotPosition.LeftWheelEncoderCnt;
+                                            else
+                                                leftDelta = robotPosition.LeftWheelEncoderCnt +  32767 - leftwheelposition ;
+                                        }
+
+
+
+                                            blnTurnFinish = false;
+                                            _p2pWaitCnt = 0;
+
+
+                                            if (fabs(leftDelta) >= 400)
+                                            {
+                                                setTurnTime = 50;       //5s turn unit:100ms
+                                            }
+
+                                            else if ( (fabs(leftDelta) >= 100) && (fabs(leftDelta) < 400))
+                                            {
+                                                setTurnTime = 30;       //3s turn unit:100ms
+                                            }
+                                            else
+                                            {
+                                                setTurnTime = 20;       //1s turn unit 100ms
+                                            }
+                                            waitTurnCnt = 0;
+                                            leftwheelposition = (leftwheelposition > 32767 ? leftwheelposition - 32767 : leftwheelposition);
+                                            leftwheelposition = (leftwheelposition < 0 ? 32767 + leftwheelposition : leftwheelposition);
+                                            rightwheelposition = (rightwheelposition > 32767 ? rightwheelposition - 32767 : rightwheelposition);
+                                            rightwheelposition = (rightwheelposition < 0 ? 32767 + rightwheelposition : rightwheelposition);
+
+
+                                                motorCmd.LeftWheelCmd = leftwheelposition;
+                                                motorCmd.RightWheelCmd = rightwheelposition;
+                                                motorCmd.p2pDriveMethod = PositionControl;
+                                                motorCmd.p2pDriveStatus = tempP2PStatus;
+                                                motorCmd.RunTime = setTurnTime*100;         //unit secnd
+                                                p2pServiceStatus = P2PTurn;
+                                                emit p2pDriveCmdCallback(motorCmd);
+                                    }
+                                    else
+                                    {
+                                        tempP2PStatus = P2PWait;
+                                        blnTurnFinish = true;
+                                        if (p2pServiceStatus != P2PWait)
+                                        {
+
+                                                motorCmd.LeftWheelCmd =0;
+                                                motorCmd.RightWheelCmd = 0;
+                                                motorCmd.p2pDriveMethod = SpeedControl;
+                                                motorCmd.p2pDriveStatus = tempP2PStatus;
+                                                p2pServiceStatus = P2PWait;
+                                                emit p2pDriveCmdCallback(motorCmd);
+
+                                        }
+
+
+                                        if (_pointSet.StopTime > 0)
+                                        {
+                                            _p2pWaitCnt++;
+
+                                            if (_p2pWaitCnt >= _pointSet.StopTime * 10)        //second
+                                            {
+                                                //finish
+                                                _p2pWaitCnt = _pointSet.StopTime * 10;
+
+                                                    motorCmd.LeftWheelCmd = 0;
+                                                    motorCmd.RightWheelCmd = 0;
+                                                    motorCmd.p2pDriveMethod = SpeedControl;
+                                                    motorCmd.p2pDriveStatus = P2POver;
+                                                    p2pServiceStatus = P2POver;
+                                                    emit p2pDriveCmdCallback(motorCmd);
+
+                                            }
+
+                                        }
+                                        else
+                                        {
+
+                                                motorCmd.LeftWheelCmd = 0;
+                                                motorCmd.RightWheelCmd = 0;
+                                                motorCmd.p2pDriveMethod = SpeedControl;
+                                                motorCmd.p2pDriveStatus = P2POver;
+                                                p2pServiceStatus = P2POver;
+                                                emit p2pDriveCmdCallback(motorCmd);
+
+                                        }
+
+                                    }
+                                }
+                                else
+                                {
+                                    //p2pstate = turn
+                                    //wait turn finish here
+
+                                    tempP2PStatus = P2PTurn;
+                                    blnTurnFinish = false;
+                                    waitTurnCnt++;
+                                    if (waitTurnCnt == setTurnTime + 10)
+                                    {
+                                        waitTurnCnt = 0;
+                                        blnTurnFinish = true;
+                                        tempP2PStatus = P2PWait;
+
+                                            motorCmd.LeftWheelCmd = 0;
+                                            motorCmd.RightWheelCmd = 0;
+                                            motorCmd.p2pDriveMethod = SpeedControl;
+                                            motorCmd.p2pDriveStatus = tempP2PStatus;
+                                            p2pServiceStatus = P2PWait;
+                                            emit p2pDriveCmdCallback(motorCmd);
+
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            //not turning , this point already achive
+                            tempP2PStatus = P2POver;
+
+                                motorCmd.LeftWheelCmd = 0;
+                                motorCmd.RightWheelCmd = 0;
+                                motorCmd.p2pDriveMethod = SpeedControl;
+                                motorCmd.p2pDriveStatus = tempP2PStatus;
+                                p2pServiceStatus = P2POver;
+                                emit p2pDriveCmdCallback(motorCmd);
+
+                        }
+
+                }
+
+
+            }
+            else
+            {
+                //normally not run to here
+                    //stop robot first
+
+                    motorCmd.LeftWheelCmd = 0;
+                    motorCmd.RightWheelCmd = 0;
+                    motorCmd.p2pDriveMethod = SpeedControl;
+                    motorCmd.p2pDriveStatus = P2POver;
+                    p2pServiceStatus = P2POver;
+                    emit p2pDriveCmdCallback(motorCmd);
+
+            }
+
+           //start timere again
+           // mainTimer .start();
+
+        }

@@ -1,0 +1,21 @@
+# battery /power information message from DrRobot Robot.
+
+Header header    	# timestamp in the header is the time the driver
+
+float32 battery_vol		# battery voltage, if not in charge station, it also would be system voltage
+float32 system_vol	# system power voltage, in charge station, it would be 24V DC power
+float32 battery_fuel	# battery fuel, estimate by fuel table
+float32 dcin_vol	# dcin power voltage reading, only avaiable in chage state
+float32 dcin_current	#  for charger
+uint32 charge_time_min	# charging minute
+uint32 charge_time_sec	# charging second
+uint8 charge_error_code	# charging error code
+uint8 charge_mode	# charge mode
+uint8 charge_status	# charging state, finish or not
+uint8 charge_rx_status	# charging state
+float32 charger_temperature	# charger CPU temperature
+float32 set_charge_current	# set charge current
+uint8 charge_flag	# charging or not, 1- charing, 0- not
+uint8 in_chargestation_flag	# in charge station or not, 1-in, 0-not
+float32[] cell_vol	# cell voltage
+float32[] cell_res	# cell resistor

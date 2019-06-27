@@ -1,0 +1,8 @@
+# head motor command message from DrRobot Robot.
+float32 head_tilt_pos		# head tilt angle(-40~40)
+uint8 head_tiltflag	        # head tilt flag, 0- no control, 1- control
+uint32 head_tilt_time		# for head tilt position command time
+ 
+float32 head_pan_pos		# head pan angle(-90~90)
+uint8 head_panflag	        # head pan flag, 0- no control, 1- control
+uint32 head_pan_time		# for head pan position command time
