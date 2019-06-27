@@ -1,0 +1,12 @@
+# standard Sensor information message from DrRobot Robot.
+
+Header header    	# timestamp in the header is the time the 
+
+#make sure below sensors on your robot or not
+float32 robot_x	# robot x position reading
+float32 robot_y	#robot y position reading
+float32 robot_heading	# robot heading reading
+float32 markid_height	# mark height
+uint32 mark_id		# mark ID
+uint8 valid_flag	# valid or not, 0- in dead zone, no reading
+

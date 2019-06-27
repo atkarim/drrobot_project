@@ -1,0 +1,83 @@
+#ifndef DRROBOTSENSORMAPBUILD_H
+#define DRROBOTSENSORMAPBUILD_H
+#include "../include/drrobot_clinicrobot/drrobotsensormapbuildhelper.hpp"
+#include "../include/drrobot_clinicrobot/drrobotconst.hpp"
+#include "../include/drrobot_clinicrobot/drrobotp2pdrive.hpp"
+#include "qmath.h"
+#include "math.h"
+#include "QObject"
+class DrRobotSensorMapBuilder : public QObject
+{
+    Q_OBJECT
+    private:
+        int detectWindowSize;
+        int _Occ_Map[MAPSIZE][MAPSIZE];
+        int _pre_Occ_Map[MAPSIZE][MAPSIZE];
+//windows histogram
+//(x,y,0) = angel section, 0: -170~ -180 degree, 35: 170 ~ 180
+// (x,y,1) magnitude
+        int HWin_map[cWinSize][cWinSize][2];
+
+        bool configed;
+        bool setPosition;
+
+        bool configedLaser;
+        int fadeOutStep;
+        int fadeOutRate;
+        int polarMapTH;
+
+        bool irUsed;
+        bool usUsed;
+        bool laserUsed;      //default without laser
+
+        int iDiffuseCount;
+        RobotPosition currentPos;
+        RobotPosition prePos;
+        ConfigData configData;
+        IRObjData irObjData[MAXIRNUM];
+        USObjData usObjData[MAXUSNUM];
+
+        LaserConfigData laserConfigData;
+
+
+        SensorMapData sensorMap;
+
+        bool OCC_MAP_EMPTY_Update(int start_X_index, int start_Y_index, int end_X_index, int end_Y_index);
+        bool OCC_MAP_OCCUPIED_Update(int X_Index, int Y_Index);
+        double calP2PAngle(double X1, double Y1, double X2, double Y2);
+        void copyPreOccMap(bool blnModX, bool blnMody);
+        void ResetOccMap();
+        void MoveOccMap(int offsetX, int offsetY);
+
+    public:
+
+        //    DrRobotSensorMapBuilder();
+
+        //   virtual ~DrRobotSensorMapBuilder();
+            void setDrRobotSensorMapBuilder();
+            bool PreSetPosition(RobotPosition robotPostion);
+            bool ConfigLaserSensor(LaserConfigData data);
+            bool ConfigSensor(ConfigData data);
+            bool SetPolarMapTH(int data);
+            bool SetFadeOutStep(int data);
+            bool SetFadeOutRate(int data);
+            bool SetIRUse(bool data);
+            bool SetUSUse(bool data);
+            bool SetLaserUse(bool data);
+            bool SetDetectDistance(double dis);
+            //feed with the latest sensor data and position information
+            //function will fire call back to update the map information when finished
+            // IR/US sensor and position info will update occ_map and move the occ_map
+            //it will output the plor_map too.
+            bool UpdateSensorInfo(SensorData sensorData, RobotPosition posData);
+            // please notice laser only update the occ_map
+
+            bool UpdateLaserSensorInfo(LaserSensorData laserSensorData);
+            void UpdateSensor(SensorData sensorData);
+            void UpdateSensorMap();
+
+            signals:
+                void mapBuilderServiceCallback(SensorMapData data);
+};
+
+#endif // DRROBOTSENSORMAPBUILD_H

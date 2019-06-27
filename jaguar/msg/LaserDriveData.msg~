@@ -1,0 +1,10 @@
+# laser tilting driving module information message from DrRobot Robot.
+
+Header header    	# timestamp in the header is the time the 
+
+float32 offset_x	# link with robot base
+float32 offset_y	# base link
+float32 offset-z	# base link
+float32 tilt_angle	# base link
+uint8 stop_flag		# move or not, 0-stop
+uint8 drive_state	# drive board state
